@@ -21,6 +21,9 @@ try:
 except ImportError:
     _EXCEL_OK = False
 
+import asyncio
+import collections
+from services.intelligence import draft_counter_post
 from services.storage import (
     init_db, get_all_posts, get_stored_companies, get_all_analyses,
 )
@@ -418,30 +421,64 @@ for col, (svg_path, color, bg, val, label) in zip(cols, kpis):
 # SECTION 1 — ENGAGEMENT BY COMPANY
 # ═════════════════════════════════════════════════════════════════════════════
 
-sec_header(P_CHART, "Engagement by Company")
+sec_header(P_CHART, "Engagement vs Themes")
 
 with st.container(border=True):
-    df = pd.DataFrame([{"Company": p.company, "Engagement": p.engagement_score} for p in posts])
-    company_avg = df.groupby("Company")["Engagement"].mean().reset_index()
-    company_avg.columns = ["Company", "Avg Engagement"]
-    company_avg = company_avg.sort_values("Avg Engagement", ascending=True)
+    ch_col1, ch_col2 = st.columns(2, gap="large")
+    
+    with ch_col1:
+        st.markdown("<p style='font-size:14px;color:#CBD5E1;margin-bottom:0;'>Avg Engagement by Company</p>", unsafe_allow_html=True)
+        df = pd.DataFrame([{"Company": p.company, "Engagement": p.engagement_score} for p in posts])
+        company_avg = df.groupby("Company")["Engagement"].mean().reset_index()
+        company_avg.columns = ["Company", "Avg Engagement"]
+        company_avg = company_avg.sort_values("Avg Engagement", ascending=True)
 
-    fig = px.bar(
-        company_avg, x="Avg Engagement", y="Company", orientation="h",
-        color="Avg Engagement",
-        color_continuous_scale=["#1C2234", "#5B8AF0", "#7C5CFC"],
-        text=company_avg["Avg Engagement"].round(0).astype(int),
-    )
-    fig.update_layout(
-        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="system-ui, sans-serif", color="#8892A8"),
-        showlegend=False, coloraxis_showscale=False,
-        height=250, margin=dict(l=0, r=50, t=8, b=8),
-        xaxis=dict(showgrid=False, showticklabels=False, title=""),
-        yaxis=dict(showgrid=False, title="", tickfont=dict(size=12, color="#CBD5E1")),
-    )
-    fig.update_traces(textposition="outside", textfont=dict(color="#8892A8", size=11), marker_line_width=0)
-    st.plotly_chart(fig, use_container_width=True)
+        fig = px.bar(
+            company_avg, x="Avg Engagement", y="Company", orientation="h",
+            color="Avg Engagement",
+            color_continuous_scale=["#1C2234", "#5B8AF0", "#7C5CFC"],
+            text=company_avg["Avg Engagement"].round(0).astype(int),
+        )
+        fig.update_layout(
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(family="system-ui, sans-serif", color="#8892A8"),
+            showlegend=False, coloraxis_showscale=False,
+            height=260, margin=dict(l=0, r=50, t=20, b=8),
+            xaxis=dict(showgrid=False, showticklabels=False, title=""),
+            yaxis=dict(showgrid=False, title="", tickfont=dict(size=12, color="#CBD5E1")),
+        )
+        fig.update_traces(textposition="outside", textfont=dict(color="#8892A8", size=11), marker_line_width=0)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with ch_col2:
+        st.markdown("<p style='font-size:14px;color:#CBD5E1;margin-bottom:0;'>Industry Share of Voice by Theme</p>", unsafe_allow_html=True)
+        
+        # Extract primary theme (before slash or plus)
+        themes = []
+        for pid, a in analyses.items():
+            if a.content_classification and a.content_classification != "UNKNOWN":
+                primary = re.split(r'[/+]', a.content_classification)[0].strip()
+                themes.append(primary)
+        
+        if themes:
+            theme_counts = collections.Counter(themes).most_common(6)
+            theme_df = pd.DataFrame(theme_counts, columns=["Theme", "Count"])
+            fig_pie = px.pie(
+                theme_df, values='Count', names='Theme', hole=0.6,
+                color_discrete_sequence=["#7C5CFC", "#5B8AF0", "#10B981", "#EF4444", "#F59E0B", "#8892A8"]
+            )
+            fig_pie.update_layout(
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                font=dict(family="system-ui, sans-serif", color="#8892A8"),
+                showlegend=False, height=260, margin=dict(l=0, r=0, t=30, b=0),
+            )
+            fig_pie.update_traces(
+                textposition='inside', textinfo='percent+label',
+                marker=dict(line=dict(color='#0F1423', width=2))
+            )
+            st.plotly_chart(fig_pie, use_container_width=True)
+        else:
+            st.info("No theme data available yet.", icon="📊")
 
 # ═════════════════════════════════════════════════════════════════════════════
 # SECTION 2 — DOWNLOAD CENTER
@@ -639,20 +676,36 @@ def render_card(post, analysis):
     </div>
     """, unsafe_allow_html=True)
 
-    with st.expander("View Detailed Intelligence", expanded=False):
-        ca, cb = st.columns([2, 1])
-        with ca:
-            if analysis:
-                st.markdown(f"**Strategic Intent:** {analysis.strategic_intent}")
-                st.markdown(f"**Competitive Insight:** {analysis.competitive_insight}")
-                st.markdown(f"**Trend Signal:** {analysis.trend_signal}")
-        with cb:
-            st.markdown(f"**Engagement Rate:** {post.engagement_rate:.2f}%")
-            st.markdown(f"**Post Type:** {post.post_type}")
-            if post.hashtags:
-                st.markdown(f"**Hashtags:** #{' #'.join(post.hashtags[:5])}")
-            if post.post_url:
-                st.markdown(f"[View on LinkedIn →]({post.post_url})")
+    col_exp, col_btn = st.columns([4, 1], vertical_alignment="center")
+    with col_exp:
+        with st.expander("View Detailed Intelligence", expanded=False):
+            ca, cb = st.columns([2, 1])
+            with ca:
+                if analysis:
+                    st.markdown(f"**Strategic Intent:** {analysis.strategic_intent}")
+                    st.markdown(f"**Competitive Insight:** {analysis.competitive_insight}")
+                    st.markdown(f"**Trend Signal:** {analysis.trend_signal}")
+            with cb:
+                st.markdown(f"**Engagement Rate:** {post.engagement_rate:.2f}%")
+                st.markdown(f"**Post Type:** {post.post_type}")
+                if post.hashtags:
+                    st.markdown(f"**Hashtags:** #{' #'.join(post.hashtags[:5])}")
+                if post.post_url:
+                    st.markdown(f"[View on LinkedIn →]({post.post_url})")
+
+    gen_post_result = False
+    with col_btn:
+        if st.button("Draft Counter-Post", key=f"draft_{post.id}", icon=":material/edit:"):
+            gen_post_result = True
+            
+    if gen_post_result:
+        with st.spinner("Mistral AI is drafting a counter-post..."):
+            gen_post = asyncio.run(draft_counter_post(
+                {"company": post.company, "text": post.text},
+                analysis
+            ))
+        st.success("Draft Generated for The Hartford India!")
+        st.info(gen_post)
 
 # Render
 if not pool:

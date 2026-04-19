@@ -132,3 +132,49 @@ def get_fallback_analysis() -> dict[str, Any]:
         "trend_signal": "N/A",
         "raw_analysis_json": "{}"
     }
+
+async def draft_counter_post(competitor_post: dict[str, Any], analysis: Any) -> str:
+    """Generates a LinkedIn counter-post for The Hartford India based on competitor insight."""
+    mistral_api_key = os.getenv("MISTRAL_API_KEY")
+    mistral_model = os.getenv("MISTRAL_MODEL", "mistral-large-latest")
+    
+    if not mistral_api_key:
+        return "⚠️ MISTRAL_API_KEY is not set. Cannot format counter-post."
+
+    llm = ChatMistralAI(
+        model=mistral_model, 
+        mistral_api_key=mistral_api_key,
+        temperature=0.7
+    )
+    
+    comp_company = competitor_post.get("company", "A competitor")
+    comp_text = competitor_post.get("text", "")
+    action = getattr(analysis, "recommended_action", "") if analysis else "Capitalize on the competitor's post engagement."
+    insight = getattr(analysis, "competitive_insight", "") if analysis else "The competitor is gaining traction with this topic."
+
+    prompt = f"""
+    Act as the Lead Brand Manager for "The Hartford India", an enterprise Global Capability Center (GCC).
+    A competitor ({comp_company}) recently made a successful LinkedIn post:
+    
+    COMPETITOR POST:
+    "{comp_text}"
+    
+    COMPETITIVE INSIGHT:
+    "{insight}"
+    
+    RECOMMENDED ACTION:
+    "{action}"
+    
+    Your task: Draft a powerful, original LinkedIn post for "The Hartford India" that capitalizes on this same trending topic or tackles the recommended action.
+    Make it highly engaging, professional but modern, and match The Hartford's voice (innovation, inclusion, and excellence).
+    Include 2-3 paragraphs, a strong hook, and appropriate emojis and hashtags. Do not copy the competitor directly—create a counter-narrative or a superior viewpoint.
+    Return ONLY the drafted LinkedIn post copy.
+    """
+
+    try:
+        logger.info("🤖 Drafting counter-post via Mistral AI...")
+        response = await llm.ainvoke(prompt)
+        return response.content
+    except Exception as e:
+        logger.error(f"Failed to draft counter-post: {e}")
+        return f"⚠️ Failed to draft counter-post: {e}"
