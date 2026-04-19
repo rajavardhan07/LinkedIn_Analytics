@@ -233,8 +233,8 @@ def main():
     parser.add_argument(
         "--count",
         type=int,
-        default=10,
-        help="Number of posts per company (default: 10)",
+        default=5,
+        help="Number of posts per company (default: 5)",
     )
     parser.add_argument(
         "--mock",

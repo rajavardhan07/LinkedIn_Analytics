@@ -5,6 +5,7 @@ python-dotenv>=1.0.0
 
 # Phase 2: Database
 sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.9
 
 # Phase 4: LLM Intelligence (Mistral AI)
 langchain>=0.3.0
@@ -13,6 +14,8 @@ langchain-mistralai>=0.2.0
 # Phase 6: Dashboard
 streamlit>=1.40.0
 plotly>=5.18.0
+pandas>=2.0.0
+openpyxl>=3.1.0
 
 # Testing
 pytest>=8.0.0

@@ -22,7 +22,7 @@ except ImportError:
     _EXCEL_OK = False
 
 from services.storage import (
-    init_db, get_all_posts, get_stored_companies, get_analysis_for_post,
+    init_db, get_all_posts, get_stored_companies, get_all_analyses,
 )
 
 # ── Page Config ───────────────────────────────────────────────────────────────
@@ -82,7 +82,7 @@ st.html("""
   --border-med:  rgba(255,255,255,0.13);
 }
 
-html, body, [class*="css"], p, span, div, label, button {
+html, body, [class*="css"], p, div, label, button {
   font-family: -apple-system, 'Segoe UI', Roboto, system-ui, sans-serif !important;
 }
 .main { background: var(--bg) !important; }
@@ -302,18 +302,63 @@ def sec_header(svg_path, title):
 # ── Init ──────────────────────────────────────────────────────────────────────
 
 init_db()
-companies = get_stored_companies()
+
+# ── Cache helper ──────────────────────────────────────────────────────────────
+# st.cache_data requires serializable (picklable) return values, so we convert
+# SQLAlchemy ORM rows → plain dicts, then wrap in SimpleNamespace for the same
+# attribute-access syntax the rest of the app uses. Supabase is only queried
+# once per 5-minute TTL; every filter/pagination change works on in-memory data.
+
+from types import SimpleNamespace
+
+@st.cache_data(ttl=300, show_spinner="Loading intelligence data...")
+def load_dashboard_data():
+    """Load all posts + analyses in 2 DB queries and return as plain dicts."""
+    raw_posts     = get_all_posts()
+    raw_analyses  = get_all_analyses()   # dict[post_id -> AnalysisRow]
+    raw_companies = get_stored_companies()
+
+    posts_dicts = [p.to_dict() for p in raw_posts]
+
+    analyses_dicts = {}
+    for post_id, a in raw_analyses.items():
+        analyses_dicts[post_id] = {
+            "executive_snapshot":     a.executive_snapshot or "",
+            "content_classification": a.content_classification or "",
+            "strategic_intent":       a.strategic_intent or "",
+            "engagement_analysis":    a.engagement_analysis or "",
+            "creative_breakdown":     a.creative_breakdown or "",
+            "competitive_insight":    a.competitive_insight or "",
+            "recommended_action":     a.recommended_action or "",
+            "alert_tag":              a.alert_tag or "LOW",
+            "trend_signal":           a.trend_signal or "",
+        }
+
+    return posts_dicts, analyses_dicts, raw_companies
+
+_posts_raw, _analyses_raw, companies = load_dashboard_data()
+
+# Wrap as SimpleNamespace so attribute access (post.company, analysis.alert_tag)
+# works identically to before — zero changes needed in the rest of the file.
+# Timestamps come back as ISO strings from to_dict(); parse them back to datetime.
+def _to_post_ns(d: dict) -> SimpleNamespace:
+    ns = SimpleNamespace(**d)
+    ts = d.get("timestamp", "")
+    if ts:
+        try:
+            ns.timestamp = datetime.fromisoformat(ts)
+        except (ValueError, TypeError):
+            ns.timestamp = None
+    else:
+        ns.timestamp = None
+    return ns
+
+posts    = [_to_post_ns(p) for p in _posts_raw]
+analyses = {pid: SimpleNamespace(**a) for pid, a in _analyses_raw.items()}
 
 if not companies:
     st.info("No data yet. Run: python main.py --analyze --count 5  then refresh.")
     st.stop()
-
-posts = get_all_posts()
-analyses = {}
-for p in posts:
-    a = get_analysis_for_post(p.id)
-    if a:
-        analyses[p.id] = a
 
 def sort_key(post):
     a = analyses.get(post.id)
@@ -546,12 +591,17 @@ def render_card(post, analysis):
     snap = (analysis.executive_snapshot or "").strip() if analysis else ""
     if not snap:
         snap = (post.text or "")[:160].replace("\n", " ").strip() + "..."
+    
+    # Clean up any AI-generated markdown asterisks from the snapshot
+    snap = snap.replace('*', '')
 
     action = ""
     if analysis and analysis.recommended_action:
         action = analysis.recommended_action.strip()
-        action = re.sub(r'(?<!^)\s+(?=\d+\.\s)', '<br>', action)
+        # Ensure bullet points and numbered lists break to a new line
+        action = re.sub(r'\n', '<br>', action)
         action = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', action)
+        action = re.sub(r'\*(.*?)\*', r'<i>\1</i>', action)
 
     action_html = (
         f'<div class="card-action">'
@@ -589,7 +639,7 @@ def render_card(post, analysis):
     </div>
     """, unsafe_allow_html=True)
 
-    with st.expander("", expanded=False):
+    with st.expander("View Detailed Intelligence", expanded=False):
         ca, cb = st.columns([2, 1])
         with ca:
             if analysis:

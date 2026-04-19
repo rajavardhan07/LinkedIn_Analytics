@@ -16,19 +16,19 @@ COMPANY_REGISTRY: dict[str, dict] = {
     },
     "HCA Healthcare India": {
         "universal_name": "hca-healthcare-india",
-        "id": None,
+        "id": 107604798,
     },
     "The Hartford India": {
         "universal_name": "the-hartford",
-        "id": None,
+        "id": 2467,
     },
     "Lloyds Technology Centre India": {
         "universal_name": "lloyds-technology-centre-india",
         "id": 98085562,  # confirmed via API
     },
     "Carelon Global Solutions India": {
-        "universal_name": "carelon-global-solutions",
-        "id": None,
+        "universal_name": "carelon-global-solutions-in",
+        "id": 91669706,
     },
 }
 

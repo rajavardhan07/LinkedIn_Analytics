@@ -16,7 +16,7 @@ LINKDAPI_API_KEY: str = os.getenv("LINKDAPI_API_KEY", "")
 LINKDAPI_BASE_URL: str = "https://linkdapi.com/api/v1"
 
 # ── Fetch Defaults ────────────────────────────────────────────────────────────
-DEFAULT_POST_COUNT: int = 10          # posts to fetch per company
+DEFAULT_POST_COUNT: int = 5          # posts to fetch per company
 MAX_RETRIES: int = 3                  # retry attempts on failure
 RETRY_DELAY: float = 1.0             # base delay in seconds (exponential backoff)
 REQUEST_TIMEOUT: float = 30.0        # seconds

@@ -327,6 +327,24 @@ def get_analysis_for_post(post_id: int) -> AnalysisRow | None:
         session.close()
 
 
+def get_all_analyses() -> dict[int, AnalysisRow]:
+    """
+    Fetch ALL analysis rows in a single query and return them keyed by post_id.
+
+    Use this in the dashboard instead of calling get_analysis_for_post() in a loop.
+    Eliminates the N+1 query problem (30 posts → 30 round-trips → 1 round-trip).
+
+    Returns:
+        Dict mapping post_id → AnalysisRow.
+    """
+    session = _get_session()
+    try:
+        rows = session.execute(select(AnalysisRow)).scalars().all()
+        return {row.post_id: row for row in rows}
+    finally:
+        session.close()
+
+
 def get_posts_without_analysis(company: str | None = None) -> list[PostRow]:
     """
     Find posts that don't have an LLM analysis yet.
